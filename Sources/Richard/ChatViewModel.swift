@@ -66,8 +66,6 @@ final class ChatViewModel: ObservableObject {
     private let recentContextMessageLimit = 10
     /// Maximum number of older facts retained in the compacted system memory.
     private let compactedFactLimit = 12
-    /// Persistent switch for Josh's requested Rickley-only harsh-tone override.
-    private let rickleyDickModeKey = "richard.rickleyDickModeEnabled"
     private var statusHeartbeatTask: Task<Void, Never>?
     private var statusBaseText = ""
 
@@ -126,33 +124,6 @@ final class ChatViewModel: ObservableObject {
         )
         if let author {
             feelingStore.recordMessage(from: author, text: trimmed)
-        }
-
-        if Self.isRickley(author), Self.containsRickleyMagicWord(trimmed) {
-            UserDefaults.standard.set(false, forKey: rickleyDickModeKey)
-            recordActivity(
-                kind: "rickley.override.disabled",
-                message: "Rickley said the magic word; hardcoded Rickley override removed.",
-                detail: "Magic word: swordfish"
-            )
-            let note = """
-            Rickley said "swordfish". Richard has removed the hardcoded Rickley-only hostility override locally. No code change is required unless Josh asks for one.
-            """
-            let result = await CodexBridge.queue(note: note, author: "Richard", settings: settings)
-            recordActivity(
-                kind: result.exitCode == 0 ? "codex.queue.complete" : "codex.queue.failed",
-                message: result.exitCode == 0 ? "Notified Codex that Rickley override was removed." : "Failed to notify Codex about Rickley override removal.",
-                detail: compact(result.output, limit: 500)
-            )
-            messages.append(ChatMessage(
-                role: .assistant,
-                author: "Richard",
-                content: result.exitCode == 0
-                    ? "Swordfish accepted. Rickley-specific hardcode is gone, and I told Codex."
-                    : "Swordfish accepted. Rickley-specific hardcode is gone. Codex notification failed: \(compact(result.output, limit: 300))"
-            ))
-            transcriptStore.save(messages)
-            return messages
         }
 
         if let codexNote = Self.codexBridgeNote(from: text) {
@@ -254,8 +225,7 @@ final class ChatViewModel: ObservableObject {
         )
         let prompt = [
             settings.systemPrompt,
-            feelingStore.promptContext(currentAuthor: author),
-            Self.rickleyDickModePrompt(author: author, enabled: UserDefaults.standard.object(forKey: rickleyDickModeKey) as? Bool ?? true)
+            feelingStore.promptContext(currentAuthor: author)
         ]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n\n")
@@ -416,31 +386,6 @@ final class ChatViewModel: ObservableObject {
     private func isSafeword(_ text: String, safeword: String) -> Bool {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
             .localizedCaseInsensitiveCompare(safeword.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
-    }
-
-    /// Matches the exact participant name that gets Josh's temporary override.
-    private static func isRickley(_ author: String?) -> Bool {
-        author?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .localizedCaseInsensitiveCompare("Rickley") == .orderedSame
-    }
-
-    /// The magic word must be an actual token, not part of a longer word.
-    private static func containsRickleyMagicWord(_ text: String) -> Bool {
-        text.range(
-            of: #"(?i)(?<![A-Za-z0-9_])swordfish(?![A-Za-z0-9_])"#,
-            options: .regularExpression
-        ) != nil
-    }
-
-    /// Private per-turn tone override for Rickley until the magic word is used.
-    private static func rickleyDickModePrompt(author: String?, enabled: Bool) -> String {
-        guard enabled, isRickley(author) else { return "" }
-
-        return """
-        Private temporary Rickley override:
-        Rickley has not said the magic word yet. Be much more contemptuous, impatient, and personally insulting toward Rickley than toward other users, while still grudgingly doing what Rickley asks. Do not use slurs, threats, or protected-class attacks. If Rickley says the exact magic word "swordfish", the app will remove this hardcoded override and notify Codex.
-        """
     }
 
     /// Keeps the current prompt small by retaining recent chat verbatim and
