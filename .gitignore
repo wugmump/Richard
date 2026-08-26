@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Swift/Xcode build products
+.build/
+build/
+DerivedData/
+
+# Local SwiftPM/Xcode workspace state
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+**/xcuserdata/
+
+# Local secrets and generated TLS material
+*.p12
+*.key
+*.crt
+*.pem

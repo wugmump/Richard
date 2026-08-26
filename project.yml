@@ -1,0 +1,25 @@
+name: Richard
+options:
+  minimumXcodeGenVersion: 2.46.0
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+targets:
+  Richard:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/Richard
+      - path: Resources/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.local.richard
+        PRODUCT_NAME: Richard
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: false
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
