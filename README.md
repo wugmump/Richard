@@ -27,7 +27,7 @@ The project is built for private, consensual adult fictional roleplay. The shipp
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 ```
 
-- A local model server. Ollama is the default path:
+- A local model server. Ollama is the default path. If `brew` is not installed yet, follow the official [Homebrew installation instructions](https://docs.brew.sh/Installation) first:
 
 ```sh
 brew install ollama
@@ -243,4 +243,3 @@ Then check source state:
 ```sh
 git status --short
 ```
-
