@@ -241,6 +241,12 @@ final class ChatViewModel: ObservableObject {
         }
         history.append(Self.currentDateAuthorityMessage())
         recordActivity(kind: "context.clock", message: "Injected current app clock authority.")
+        history.append(ChatMessage(role: .system, content: settings.assholeBehaviorPrompt))
+        recordActivity(
+            kind: "context.tone",
+            message: "Injected current asshole level authority.",
+            detail: "\(Int(settings.assholeLevel.rounded()))/100"
+        )
         let client = ChatClient(
             backendURL: settings.backendURL,
             backendKind: settings.backendKind,

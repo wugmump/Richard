@@ -609,7 +609,6 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
           clearTimeout(settingsSaveTimer);
           const level = Number(assholeSlider.value);
           renderAssholeLevel(level);
-          settingsSaveTimer = setTimeout(() => saveSettings(level), 160);
         }
 
         async function saveSettings(level) {
