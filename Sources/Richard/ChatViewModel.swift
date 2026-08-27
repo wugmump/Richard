@@ -172,7 +172,7 @@ final class ChatViewModel: ObservableObject {
             return messages
         }
 
-        if let directReply = directTranscriptRecallReply(from: trimmed, author: author) {
+        if let directReply = directTranscriptRecallReply(from: trimmed, author: author, excluding: userMessage.id) {
             messages.append(ChatMessage(role: .assistant, content: directReply))
             transcriptStore.save(messages)
             recordActivity(kind: "chat.direct", message: "Answered transcript recall question without model.", detail: compact(directReply, limit: 700))
@@ -452,11 +452,13 @@ final class ChatViewModel: ObservableObject {
 
     /// Answers questions about prior chat messages from the stored transcript
     /// instead of asking the model to reconstruct who said what and when.
-    private func directTranscriptRecallReply(from text: String, author: String?) -> String? {
+    private func directTranscriptRecallReply(from text: String, author: String?, excluding currentMessageID: UUID) -> String? {
         let lowercased = text.lowercased()
         guard Self.isTranscriptRecallRequest(lowercased) else { return nil }
 
-        let priorMessages = messages.filter { $0.role == .user || $0.role == .assistant }
+        let priorMessages = messages.filter { message in
+            message.id != currentMessageID && (message.role == .user || message.role == .assistant)
+        }
         guard !priorMessages.isEmpty else {
             return "There is no earlier transcript to search. A majestic absence of evidence."
         }
@@ -510,16 +512,28 @@ final class ChatViewModel: ObservableObject {
         ]
         if recallMarkers.contains(where: lowercased.contains) { return true }
 
+        let asksRecallQuestion = lowercased.contains("?")
+            || lowercased.contains("what ")
+            || lowercased.contains("when ")
+            || lowercased.contains("where ")
+            || lowercased.contains("which ")
+            || lowercased.contains("remember")
+            || lowercased.contains("recall")
+        let asksForNewAnswer = lowercased.contains("provide your answer")
+            || lowercased.contains("answer in")
+            || lowercased.contains("revisit my query")
+            || lowercased.contains("revist my query")
         let mentionsPrior = lowercased.contains("earlier")
             || lowercased.contains("previous")
             || lowercased.contains("before")
             || lowercased.contains("agreed")
+            || lowercased.contains("agreement")
         let asksPreference = lowercased.contains("prefer")
             || lowercased.contains("preference")
             || lowercased.contains("guidelines")
             || lowercased.contains("format")
             || lowercased.contains("citation")
-        return mentionsPrior && asksPreference
+        return asksRecallQuestion && mentionsPrior && asksPreference && !asksForNewAnswer
     }
 
     /// Chooses whose prior message to search for pronoun-style recall requests.
