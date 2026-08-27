@@ -497,6 +497,7 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         const assholeValue = document.getElementById("assholeValue");
         const attachedImages = [];
         let isOffline = false;
+        let isSubmitting = false;
         let settingsSaveTimer = 0;
         let isEditingSettings = false;
 
@@ -587,10 +588,15 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
           isOffline = value;
           offlineBanner.classList.toggle("visible", value);
           content.disabled = value;
-          sendButton.disabled = value;
+          sendButton.disabled = value || isSubmitting;
           document.getElementById("attachButton").disabled = value;
           assholeSlider.disabled = value;
           if (value) status.textContent = "";
+        }
+
+        function setSubmitting(value) {
+          isSubmitting = value;
+          sendButton.disabled = value || isOffline;
         }
 
         function renderAssholeLevel(value) {
@@ -698,10 +704,12 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
 
         document.getElementById("composer").addEventListener("submit", async event => {
           event.preventDefault();
+          if (isSubmitting) return;
           if (!requireName()) return;
           if (!code) requireCode();
           const text = content.value.trim();
           if (!text && attachedImages.length === 0) return;
+          setSubmitting(true);
           content.value = "";
           const images = attachedImages.splice(0, attachedImages.length).map(image => ({
             name: image.name,
@@ -725,6 +733,8 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
             content.value = text;
             attachedImages.push(...images.map(image => ({ ...image, preview: image.data })));
             renderAttachments();
+          } finally {
+            setSubmitting(false);
           }
         });
 

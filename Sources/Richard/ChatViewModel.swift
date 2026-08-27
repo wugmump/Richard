@@ -101,6 +101,14 @@ final class ChatViewModel: ObservableObject {
     func submit(text: String, author: String?, settings: AppSettings) async throws -> [ChatMessage] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return messages }
+        if isDuplicateRecentUserSubmit(text: trimmed, author: author) {
+            recordActivity(
+                kind: "chat.duplicate",
+                message: "Ignored duplicate submit from \(author ?? "local user").",
+                detail: compact(trimmed, limit: 500)
+            )
+            return messages
+        }
         guard !isSending else { throw ChatSubmissionError.busy }
 
         if isSafeword(trimmed, safeword: settings.safeword) {
@@ -161,6 +169,13 @@ final class ChatViewModel: ObservableObject {
             messages.append(ChatMessage(role: .assistant, content: directReply))
             transcriptStore.save(messages)
             recordActivity(kind: "chat.direct", message: "Rejected unverified reality rewrite without model.", detail: directReply)
+            return messages
+        }
+
+        if let directReply = directTranscriptRecallReply(from: trimmed, author: author) {
+            messages.append(ChatMessage(role: .assistant, content: directReply))
+            transcriptStore.save(messages)
+            recordActivity(kind: "chat.direct", message: "Answered transcript recall question without model.", detail: compact(directReply, limit: 700))
             return messages
         }
 
@@ -401,9 +416,223 @@ final class ChatViewModel: ObservableObject {
     func appendCodexReply(content: String, author: String = "Codex") {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if isDuplicateRecentAssistantMessage(content: trimmed, author: author) {
+            recordActivity(kind: "codex.reply.duplicate", message: "Ignored duplicate Codex bridge reply.", detail: compact(trimmed, limit: 800))
+            return
+        }
         messages.append(ChatMessage(role: .assistant, author: author, content: trimmed))
         transcriptStore.save(messages)
         recordActivity(kind: "codex.reply", message: "Received Codex bridge reply.", detail: compact(trimmed, limit: 800))
+    }
+
+    /// Suppresses accidental double-submits from browsers or repeated API posts.
+    private func isDuplicateRecentUserSubmit(text: String, author: String?) -> Bool {
+        guard let lastUser = messages.last(where: { $0.role == .user }) else { return false }
+        let sameAuthor = normalizedName(lastUser.author) == normalizedName(author)
+        let sameContent = lastUser.content.trimmingCharacters(in: .whitespacesAndNewlines) == Self.visibleUserContent(from: text)
+        let recent = Date().timeIntervalSince(lastUser.createdAt) < 2.5
+        return sameAuthor && sameContent && recent
+    }
+
+    /// Suppresses duplicate callbacks from bridge/API retry behavior.
+    private func isDuplicateRecentAssistantMessage(content: String, author: String) -> Bool {
+        let normalizedAuthor = normalizedName(author)
+        return messages.suffix(4).contains { message in
+            message.role == .assistant
+                && normalizedName(message.author) == normalizedAuthor
+                && message.content.trimmingCharacters(in: .whitespacesAndNewlines) == content
+                && Date().timeIntervalSince(message.createdAt) < 10
+        }
+    }
+
+    /// Normalizes optional display names for duplicate comparisons.
+    private func normalizedName(_ name: String?) -> String {
+        name?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+    }
+
+    /// Answers questions about prior chat messages from the stored transcript
+    /// instead of asking the model to reconstruct who said what and when.
+    private func directTranscriptRecallReply(from text: String, author: String?) -> String? {
+        let lowercased = text.lowercased()
+        guard Self.isTranscriptRecallRequest(lowercased) else { return nil }
+
+        let priorMessages = messages.filter { $0.role == .user || $0.role == .assistant }
+        guard !priorMessages.isEmpty else {
+            return "There is no earlier transcript to search. A majestic absence of evidence."
+        }
+
+        let targetAuthor = Self.transcriptRecallTargetAuthor(from: lowercased, currentAuthor: author)
+        let candidates = priorMessages.filter { message in
+            guard let targetAuthor else { return true }
+            return normalizedName(message.author) == normalizedName(targetAuthor)
+        }
+        guard !candidates.isEmpty else {
+            return "I do not see an earlier message from \(targetAuthor ?? "that person") in the transcript."
+        }
+
+        if let quotedMatch = Self.quotedFragments(in: text)
+            .lazy
+            .compactMap({ fragment in Self.bestExactTranscriptMatch(fragment: fragment, in: candidates) })
+            .first {
+            return Self.transcriptRecallReply(for: quotedMatch, reason: "That exact text is in the transcript")
+        }
+
+        if let keywordMatch = Self.bestKeywordTranscriptMatch(query: lowercased, in: candidates) {
+            return Self.transcriptRecallReply(for: keywordMatch, reason: "Closest transcript match")
+        }
+
+        let namePhrase = targetAuthor.map { " by \($0)" } ?? ""
+        return "I searched the stored transcript and did not find a matching earlier message\(namePhrase). Try giving me an exact phrase, since apparently archaeology is now my burden."
+    }
+
+    /// Detects questions that are primarily about the existing transcript.
+    private static func isTranscriptRecallRequest(_ lowercased: String) -> Bool {
+        let recallMarkers = [
+            "what did i say",
+            "when did i say",
+            "where did i say",
+            "what did you say",
+            "when did you say",
+            "where did you say",
+            "what did richard say",
+            "when did richard say",
+            "what did josh say",
+            "when did josh say",
+            "what did rickley say",
+            "when did rickley say",
+            "read back",
+            "quote me",
+            "quote the transcript",
+            "earlier i said",
+            "previously i said",
+            "last thing i said",
+            "last message i sent"
+        ]
+        if recallMarkers.contains(where: lowercased.contains) { return true }
+
+        let mentionsPrior = lowercased.contains("earlier")
+            || lowercased.contains("previous")
+            || lowercased.contains("before")
+            || lowercased.contains("agreed")
+        let asksPreference = lowercased.contains("prefer")
+            || lowercased.contains("preference")
+            || lowercased.contains("guidelines")
+            || lowercased.contains("format")
+            || lowercased.contains("citation")
+        return mentionsPrior && asksPreference
+    }
+
+    /// Chooses whose prior message to search for pronoun-style recall requests.
+    private static func transcriptRecallTargetAuthor(from lowercased: String, currentAuthor: String?) -> String? {
+        if lowercased.contains("what did i")
+            || lowercased.contains("when did i")
+            || lowercased.contains("where did i")
+            || lowercased.contains("earlier i")
+            || lowercased.contains("previously i")
+            || lowercased.contains("quote me")
+            || lowercased.contains("my citation")
+            || lowercased.contains("do i prefer")
+            || lowercased.contains("i prefer")
+            || lowercased.contains("my preference") {
+            return currentAuthor
+        }
+
+        if lowercased.contains("rickley") { return "Rickley" }
+        if lowercased.contains("josh") { return "Josh" }
+        if lowercased.contains("richard") || lowercased.contains("you say") || lowercased.contains("you said") {
+            return "Richard"
+        }
+
+        return nil
+    }
+
+    /// Pulls straight/directional quoted phrases out of a recall question.
+    private static func quotedFragments(in text: String) -> [String] {
+        let pattern = #"["“”']([^"“”']{2,})["“”']"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard match.numberOfRanges > 1,
+                  let swiftRange = Range(match.range(at: 1), in: text) else {
+                return nil
+            }
+            return String(text[swiftRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    /// Finds a message containing an exact quoted fragment.
+    private static func bestExactTranscriptMatch(
+        fragment: String,
+        in messages: [ChatMessage]
+    ) -> ChatMessage? {
+        let normalizedFragment = fragment.lowercased()
+        return messages.reversed().first { message in
+            message.content.lowercased().contains(normalizedFragment)
+        }
+    }
+
+    /// Scores prior messages by query terms while favoring recent exact memory.
+    private static func bestKeywordTranscriptMatch(
+        query: String,
+        in messages: [ChatMessage]
+    ) -> ChatMessage? {
+        var terms = Set(
+            query
+                .replacingOccurrences(of: #"[^a-z0-9 ]"#, with: " ", options: .regularExpression)
+                .split(separator: " ")
+                .map(String.init)
+                .filter { $0.count > 2 && !Self.transcriptRecallStopWords.contains($0) }
+        )
+
+        if query.contains("citation") || query.contains("apa") {
+            terms.formUnion(["citation", "citations", "apa", "prefer"])
+        }
+        if query.contains("format") || query.contains("organization") || query.contains("structure") {
+            terms.formUnion(["format", "organization", "structure", "paragraph"])
+        }
+
+        let scored = messages.enumerated().compactMap { index, message -> (index: Int, score: Int, message: ChatMessage)? in
+            let content = message.content.lowercased()
+            let score = terms.reduce(0) { partial, term in
+                partial + (content.contains(term) ? 1 : 0)
+            }
+            guard score > 0 else { return nil }
+            return (index, score, message)
+        }
+
+        return scored.max { lhs, rhs in
+            if lhs.score == rhs.score { return lhs.index < rhs.index }
+            return lhs.score < rhs.score
+        }?.message
+    }
+
+    /// Common words that should not drive transcript search.
+    private static let transcriptRecallStopWords: Set<String> = [
+        "about", "after", "again", "agreed", "before", "correct", "could", "did",
+        "does", "entire", "guidelines", "have", "just", "last", "like", "manner",
+        "message", "previous", "previously", "read", "reply", "said", "same",
+        "should", "tell", "that", "the", "then", "there", "this", "through",
+        "what", "when", "where", "which", "with", "would", "you", "your"
+    ]
+
+    /// Formats transcript evidence with exact content and absolute timestamp.
+    private static func transcriptRecallReply(for message: ChatMessage, reason: String) -> String {
+        let speaker = message.author?.isEmpty == false ? message.author! : (message.role == .assistant ? "Richard" : "Unknown user")
+        let timestamp = transcriptTimestamp(message.createdAt)
+        return """
+        \(reason): \(speaker) said this on \(timestamp):
+
+        "\(message.content)"
+        """
+    }
+
+    /// Absolute timestamp for transcript recall answers.
+    private static func transcriptTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .full
+        formatter.timeStyle = .medium
+        formatter.timeZone = .current
+        return formatter.string(from: date)
     }
 
     /// Updates status text and mirrors it to the persistent activity log.
