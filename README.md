@@ -80,7 +80,29 @@ open build/Richard.app
 
 ## First Launch Setup
 
-Open Richard settings and check:
+On launch, Richard creates setup helpers in:
+
+```txt
+~/Library/Application Support/Richard/Setup
+```
+
+The host window shows a `Setup Checks` panel on every restart. It verifies that
+the generated setup/check scripts exist, required runtime directories exist,
+Homebrew is available, Ollama is installed, the Ollama server is reachable, and
+the configured chat model is present. Optional checks also report the vision
+model and Codex CLI path.
+
+Generated helper scripts:
+
+- `setup-richard.command`: installs Ollama through Homebrew if needed, starts
+  Ollama, pulls the configured chat and vision models, and creates Richard's
+  runtime folders.
+- `check-richard.command`: performs a read-only runtime check from Terminal.
+
+The setup script still expects Homebrew to be installed first. If `brew` is not
+installed yet, follow the official [Homebrew installation instructions](https://docs.brew.sh/Installation).
+
+Open Richard preferences and check:
 
 - Backend kind: usually `Ollama`.
 - Backend URL: usually `http://localhost:11434`.
@@ -124,6 +146,19 @@ curl -s http://127.0.0.1:9443/api/messages \
   -H 'X-Richard-Code: JOIN_CODE' \
   -d '{"author":"Alex","content":"hello","code":"JOIN_CODE"}'
 ```
+
+## Import And Export
+
+The headless host panel includes `Export` and `Import` buttons under `History Archive`.
+
+Export writes a `.richardarchive` zip package containing:
+
+- `defaults.plist`, a snapshot of Richard's `com.local.richard` defaults domain.
+- `ApplicationSupport-Richard`, including uploaded image attachments, Pi screenshots, generated setup scripts, and Codex bridge working files.
+
+Import restores that archive into the current user account, reloads app settings, reloads the shared transcript, restarts the local web listener with the imported settings, and reruns setup checks.
+
+Machine-specific dependencies are still external: install Homebrew/Ollama and pull the configured models on the destination Mac. The host panel's generated setup script handles that after Homebrew is present.
 
 ## HTTPS
 

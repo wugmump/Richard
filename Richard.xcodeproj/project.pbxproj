@@ -15,10 +15,12 @@
 		500C5B165BC5E10F8C03FF47 /* WebPageFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62CA6AF028C61D80919EAB7D /* WebPageFetcher.swift */; };
 		60F6530718C9DB5C2C9DCC09 /* RichardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7553F41EC1DE6E7CADB8C55 /* RichardApp.swift */; };
 		684A2AF58CBADCAFBE067A52 /* ChatTranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C37082088F15CFD8ECCBE271 /* ChatTranscriptStore.swift */; };
+		6B4200141667A111D6AE4E37 /* RichardArchiveManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DC0123D8A46A5288A1397F9 /* RichardArchiveManager.swift */; };
 		714EBAD3322D89AB6586FF21 /* ModelProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8088D8884E20E0619869FFAB /* ModelProfile.swift */; };
 		97BB5576E1F3A8094774A15A /* ActivityLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FABC9FC3D8F6B2C52BACF8F /* ActivityLog.swift */; };
 		99A705413B4B2A5D196ABCA6 /* PromptTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17E9EF9AEFC39CAA27DFCDC /* PromptTextEditor.swift */; };
 		A2C60F4A8AC20F82B66BD937 /* ImageAttachmentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10E8DFB1F528F699A76FCB0C /* ImageAttachmentStore.swift */; };
+		A82A4DD46DB7297EE06DC990 /* RuntimeSetupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32F69A7FBA4D160A59D85880 /* RuntimeSetupManager.swift */; };
 		A97AE35AD60F040F35547927 /* OllamaModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E89417F20840F58292CD06 /* OllamaModelManager.swift */; };
 		B33EC0A63C624E1827E169F9 /* RemoteChatServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D2820AAED1A9E51C46B4AD /* RemoteChatServer.swift */; };
 		C613B0AE052F8E8CB3CE15A7 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D5060D64058B1674FA7991 /* ChatViewModel.swift */; };
@@ -33,12 +35,14 @@
 		10E8DFB1F528F699A76FCB0C /* ImageAttachmentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachmentStore.swift; sourceTree = "<group>"; };
 		23FAAB6CC62042C8730BFEEB /* Richard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Richard.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		29E89417F20840F58292CD06 /* OllamaModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaModelManager.swift; sourceTree = "<group>"; };
+		32F69A7FBA4D160A59D85880 /* RuntimeSetupManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeSetupManager.swift; sourceTree = "<group>"; };
 		546237F855B8D57FEB755EE1 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5CB3175860FB4BA46F9710C1 /* UserFeelings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFeelings.swift; sourceTree = "<group>"; };
 		62CA6AF028C61D80919EAB7D /* WebPageFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPageFetcher.swift; sourceTree = "<group>"; };
 		6FABC9FC3D8F6B2C52BACF8F /* ActivityLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLog.swift; sourceTree = "<group>"; };
 		715A79707B94097B84108FAF /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
 		8088D8884E20E0619869FFAB /* ModelProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProfile.swift; sourceTree = "<group>"; };
+		8DC0123D8A46A5288A1397F9 /* RichardArchiveManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichardArchiveManager.swift; sourceTree = "<group>"; };
 		86D2820AAED1A9E51C46B4AD /* RemoteChatServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteChatServer.swift; sourceTree = "<group>"; };
 		86D5060D64058B1674FA7991 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		9EC9276AB0EAC6BC34FB039F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -72,7 +76,9 @@
 				A17E9EF9AEFC39CAA27DFCDC /* PromptTextEditor.swift */,
 				C0A4E366E6E1E36FECA3ECF7 /* RaspberryPiController.swift */,
 				86D2820AAED1A9E51C46B4AD /* RemoteChatServer.swift */,
+				8DC0123D8A46A5288A1397F9 /* RichardArchiveManager.swift */,
 				B7553F41EC1DE6E7CADB8C55 /* RichardApp.swift */,
+				32F69A7FBA4D160A59D85880 /* RuntimeSetupManager.swift */,
 				546237F855B8D57FEB755EE1 /* SettingsView.swift */,
 				5CB3175860FB4BA46F9710C1 /* UserFeelings.swift */,
 				62CA6AF028C61D80919EAB7D /* WebPageFetcher.swift */,
@@ -191,7 +197,9 @@
 				99A705413B4B2A5D196ABCA6 /* PromptTextEditor.swift in Sources */,
 				CD1B3FB938EC25F4D37D5EDB /* RaspberryPiController.swift in Sources */,
 				B33EC0A63C624E1827E169F9 /* RemoteChatServer.swift in Sources */,
+				6B4200141667A111D6AE4E37 /* RichardArchiveManager.swift in Sources */,
 				60F6530718C9DB5C2C9DCC09 /* RichardApp.swift in Sources */,
+				A82A4DD46DB7297EE06DC990 /* RuntimeSetupManager.swift in Sources */,
 				22B16B1DFEA8D60FD699DF82 /* SettingsView.swift in Sources */,
 				F8A4EDAFB8FEA002126EC8F1 /* UserFeelings.swift in Sources */,
 				500C5B165BC5E10F8C03FF47 /* WebPageFetcher.swift in Sources */,

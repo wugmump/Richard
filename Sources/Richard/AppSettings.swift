@@ -157,6 +157,34 @@ final class AppSettings: ObservableObject {
 
     }
 
+    /// Reloads persisted settings after an archive import.
+    ///
+    /// Assigning through the published properties refreshes SwiftUI and also
+    /// re-saves the imported values using the current app's defaults domain.
+    func reloadFromDefaults() {
+        isAgeVerified = UserDefaults.standard.bool(forKey: Keys.isAgeVerified)
+        let storedBackendKind = UserDefaults.standard.string(forKey: Keys.backendKind)
+        backendKind = BackendKind(rawValue: storedBackendKind ?? "") ?? ModelProfile.recommended.backendKind
+        backendURL = UserDefaults.standard.string(forKey: Keys.backendURL) ?? ModelProfile.recommended.backendURL
+        modelName = UserDefaults.standard.string(forKey: Keys.modelName) ?? ModelProfile.recommended.modelName
+        visionModelName = UserDefaults.standard.string(forKey: Keys.visionModelName) ?? "qwen2.5vl:7b"
+        safeword = UserDefaults.standard.string(forKey: Keys.safeword) ?? "red"
+        assholeLevel = Self.clampedAssholeLevel(UserDefaults.standard.object(forKey: Keys.assholeLevel) as? Double ?? 50)
+        allowExplicitRoleplay = UserDefaults.standard.bool(forKey: Keys.allowExplicitRoleplay)
+        remoteAccessEnabled = UserDefaults.standard.object(forKey: Keys.remoteAccessEnabled) as? Bool ?? true
+        remoteHTTPS = UserDefaults.standard.object(forKey: Keys.remoteHTTPS) as? Bool ?? false
+        remotePort = UserDefaults.standard.object(forKey: Keys.remotePort) as? Int ?? 9443
+        remoteJoinCode = UserDefaults.standard.string(forKey: Keys.remoteJoinCode) ?? String(Int.random(in: 100_000...999_999))
+        tlsIdentityPath = UserDefaults.standard.string(forKey: Keys.tlsIdentityPath) ?? ""
+        tlsIdentityPassword = UserDefaults.standard.string(forKey: Keys.tlsIdentityPassword) ?? ""
+        raspberryPiHost = UserDefaults.standard.string(forKey: Keys.raspberryPiHost) ?? "raspberrypi.local"
+        raspberryPiUser = UserDefaults.standard.string(forKey: Keys.raspberryPiUser) ?? "admin"
+        raspberryPiPassword = UserDefaults.standard.string(forKey: Keys.raspberryPiPassword) ?? "password"
+        raspberryPiPort = UserDefaults.standard.object(forKey: Keys.raspberryPiPort) as? Int ?? 22
+        codexBinaryPath = UserDefaults.standard.string(forKey: Keys.codexBinaryPath) ?? "/Applications/ChatGPT.app/Contents/Resources/codex"
+        codexThreadID = UserDefaults.standard.string(forKey: Keys.codexThreadID) ?? "01a034f3-82d6-7a80-9a60-75c9abeb0687"
+    }
+
     /// Primary system prompt sent to the model.
     ///
     /// Tool affordances are described here because the model only knows about

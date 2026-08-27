@@ -442,6 +442,16 @@ final class ChatViewModel: ObservableObject {
         recordActivity(kind: "chat.reset", message: "Visible chat transcript reset.")
     }
 
+    /// Reloads the visible transcript after an archive import.
+    func reloadTranscript() {
+        messages = transcriptStore.load() ?? [
+            ChatMessage(role: .assistant, content: "Imported archive had no readable transcript. Tremendous archival work.")
+        ]
+        errorMessage = nil
+        activityEvents = activityLog.recentEvents()
+        recordActivity(kind: "archive.import.reload", message: "Reloaded visible transcript after archive import.", detail: "Loaded \(messages.count) messages.")
+    }
+
     /// Appends a Codex-originated reply posted back through the local API.
     func appendCodexReply(content: String, author: String = "Codex") {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
