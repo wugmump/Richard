@@ -104,7 +104,7 @@ http://127.0.0.1:9443
 
 Office users should use the LAN URL shown in the app's settings or copied from the app menu. They must enter the join code. Their first unskippable prompt asks for a name, and that name is used for message attribution and per-user memory.
 
-Already-open browser clients poll the app every two seconds. If Richard quits, crashes, or stops answering, those clients show a red `Richard is offline` banner and disable sending until the app comes back. Browser users can also adjust the shared Asshole Level slider; it writes to the same persisted setting as the Mac Preferences control.
+Already-open browser clients poll the app every two seconds. If Richard quits, crashes, or stops answering, those clients show a red `Richard is offline` banner and disable sending until the app comes back. Browser users can also open the gear beside the message field and adjust the shared Asshole Level slider; it writes to the same persisted setting as the Mac Preferences control.
 
 Useful endpoints:
 

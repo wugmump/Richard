@@ -385,7 +385,7 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
       <style>
         :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         body { margin: 0; background: Canvas; color: CanvasText; }
-        main { max-width: 860px; margin: 0 auto; min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+        main { max-width: 860px; margin: 0 auto; min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto auto; }
         header { padding: 16px; border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
         h1 { font-size: 20px; margin: 0; }
         #messages { padding: 18px; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
@@ -397,8 +397,8 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         .remoteUser .msg { max-width: 100%; }
         .messageImages { display: flex; flex-wrap: wrap; gap: 8px; max-width: 100%; }
         .messageImages img { width: min(180px, 42vw); height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); }
-        #composer { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; padding: 14px; border-top: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
-        #attachButton { width: 42px; padding: 0; display: grid; place-items: center; }
+        #composer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 10px; padding: 14px; border-top: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
+        #attachButton, #settingsButton { width: 42px; padding: 0; display: grid; place-items: center; }
         #fileInput { display: none; }
         #attachments { grid-column: 1 / -1; display: none; flex-wrap: wrap; gap: 8px; }
         #attachments.visible { display: flex; }
@@ -407,7 +407,13 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         .attachment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #status { min-height: 18px; padding: 8px 14px 0; color: color-mix(in srgb, CanvasText 62%, transparent); font-size: 13px; }
         #status:empty { display: none; }
-        #behaviorPanel { display: grid; gap: 6px; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); color: color-mix(in srgb, CanvasText 72%, transparent); font-size: 13px; }
+        dialog { width: min(420px, calc(100vw - 32px)); border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 8px; padding: 0; background: Canvas; color: CanvasText; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+        dialog::backdrop { background: rgba(0,0,0,.35); }
+        #settingsHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid color-mix(in srgb, CanvasText 14%, transparent); }
+        #settingsHeader h2 { margin: 0; font-size: 18px; }
+        #closeSettingsButton { width: 34px; height: 34px; padding: 0; background: color-mix(in srgb, CanvasText 10%, transparent); color: CanvasText; }
+        #settingsBody { display: grid; gap: 16px; padding: 16px; }
+        #behaviorPanel { display: grid; gap: 6px; color: color-mix(in srgb, CanvasText 72%, transparent); font-size: 13px; }
         #behaviorHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         #assholeValue { font-variant-numeric: tabular-nums; color: CanvasText; }
         #assholeSlider { width: 100%; accent-color: AccentColor; }
@@ -421,8 +427,8 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         #identityError { color: #ff453a; min-height: 20px; }
         header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
         #identityLabel { font-size: 13px; color: color-mix(in srgb, CanvasText 62%, transparent); }
-        #offlineBanner { display: none; position: sticky; top: 0; z-index: 2; padding: 10px 14px; background: #ff453a; color: white; font-weight: 700; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,.24); }
-        #offlineBanner.visible { display: block; }
+        #offlineBanner { display: none; position: fixed; inset: 0; z-index: 20; place-items: center; padding: 24px; background: color-mix(in srgb, Canvas 84%, CanvasText 16%); color: white; font-size: clamp(28px, 7vw, 56px); font-weight: 800; text-align: center; text-transform: uppercase; letter-spacing: 0; }
+        #offlineBanner.visible { display: grid; }
       </style>
     </head>
     <body>
@@ -442,25 +448,34 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         </header>
         <section id="messages"></section>
         <div id="status"></div>
-        <section id="behaviorPanel" aria-label="Richard behavior">
-          <div id="behaviorHeader">
-            <span>Asshole Level</span>
-            <strong id="assholeValue">50</strong>
-          </div>
-          <input id="assholeSlider" type="range" min="0" max="100" step="1" value="50">
-          <div id="behaviorScale">
-            <span>Fully obsequious</span>
-            <span>Total asshole</span>
-          </div>
-        </section>
         <form id="composer">
           <button id="attachButton" type="button" title="Attach image">+</button>
           <input id="fileInput" type="file" accept="image/*" multiple>
           <div id="attachments"></div>
           <input id="content" placeholder="Message" autocomplete="off">
+          <button id="settingsButton" type="button" title="Settings" aria-label="Settings">⚙</button>
           <button id="sendButton" type="submit">Send</button>
         </form>
       </main>
+      <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+        <div id="settingsHeader">
+          <h2 id="settingsTitle">Settings</h2>
+          <button id="closeSettingsButton" type="button" title="Close" aria-label="Close">×</button>
+        </div>
+        <div id="settingsBody">
+          <section id="behaviorPanel" aria-label="Richard behavior">
+            <div id="behaviorHeader">
+              <span>Asshole Level</span>
+              <strong id="assholeValue">50</strong>
+            </div>
+            <input id="assholeSlider" type="range" min="0" max="100" step="1" value="50">
+            <div id="behaviorScale">
+              <span>Fully obsequious</span>
+              <span>Total asshole</span>
+            </div>
+          </section>
+        </div>
+      </dialog>
       <script>
         let userName = localStorage.richardName || "";
         var code = "";
@@ -473,6 +488,9 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         const status = document.getElementById("status");
         const offlineBanner = document.getElementById("offlineBanner");
         const sendButton = document.getElementById("sendButton");
+        const settingsButton = document.getElementById("settingsButton");
+        const settingsDialog = document.getElementById("settingsDialog");
+        const closeSettingsButton = document.getElementById("closeSettingsButton");
         const fileInput = document.getElementById("fileInput");
         const attachments = document.getElementById("attachments");
         const assholeSlider = document.getElementById("assholeSlider");
@@ -698,6 +716,17 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         });
 
         document.getElementById("attachButton").addEventListener("click", () => fileInput.click());
+        settingsButton.addEventListener("click", () => {
+          if (typeof settingsDialog.showModal === "function") {
+            settingsDialog.showModal();
+          } else {
+            settingsDialog.setAttribute("open", "");
+          }
+        });
+        closeSettingsButton.addEventListener("click", () => settingsDialog.close());
+        settingsDialog.addEventListener("click", event => {
+          if (event.target === settingsDialog) settingsDialog.close();
+        });
         fileInput.addEventListener("change", async () => {
           await attachFiles(fileInput.files || []);
           fileInput.value = "";
