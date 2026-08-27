@@ -545,7 +545,17 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
             messages.appendChild(div);
             appendMessageImages(messages, item.imageURLs || []);
           }
+          scrollMessagesToEnd();
+        }
+
+        function scrollMessagesToEnd() {
           messages.scrollTop = messages.scrollHeight;
+          requestAnimationFrame(() => {
+            messages.scrollTop = messages.scrollHeight;
+            requestAnimationFrame(() => {
+              messages.scrollTop = messages.scrollHeight;
+            });
+          });
         }
 
         function appendMessageImages(parent, imageURLs) {
@@ -556,9 +566,12 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
             const image = document.createElement("img");
             image.src = url;
             image.loading = "lazy";
+            image.addEventListener("load", scrollMessagesToEnd, { once: true });
+            image.addEventListener("error", scrollMessagesToEnd, { once: true });
             imageRow.appendChild(image);
           }
           parent.appendChild(imageRow);
+          scrollMessagesToEnd();
         }
 
         function renderState(payload) {
@@ -751,6 +764,7 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
           requireCode();
           refresh();
         }
+        window.addEventListener("load", scrollMessagesToEnd);
         setInterval(refresh, 2000);
       </script>
     </body>

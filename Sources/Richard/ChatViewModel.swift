@@ -224,6 +224,8 @@ final class ChatViewModel: ObservableObject {
             history.append(ChatMessage(role: .system, content: Self.opinionModeInstruction(for: trimmed)))
             recordActivity(kind: "opinion.mode", message: "Injected per-turn opinion instruction.")
         }
+        history.append(Self.currentDateAuthorityMessage())
+        recordActivity(kind: "context.clock", message: "Injected current app clock authority.")
         let client = ChatClient(
             backendURL: settings.backendURL,
             backendKind: settings.backendKind,
@@ -281,14 +283,23 @@ final class ChatViewModel: ObservableObject {
     ) async throws -> String {
         let opinionFailure = Self.isOpinionRequest(originalText) && Self.isOpinionDodge(initialReply)
         let boilerplateFailure = Self.containsModelBoilerplate(initialReply)
-        guard opinionFailure || boilerplateFailure else {
+        let dateFailure = Self.containsDateChronologyFailure(initialReply, originalText: originalText)
+        guard opinionFailure || boilerplateFailure || dateFailure else {
             return initialReply
         }
 
         setStatus("Richard is rewriting the model-ish sludge.")
         recordActivity(
-            kind: opinionFailure ? "opinion.retry" : "boilerplate.retry",
-            message: opinionFailure ? "Retrying dodged opinion response." : "Retrying model-disclaimer response.",
+            kind: Self.retryActivityKind(
+                opinionFailure: opinionFailure,
+                boilerplateFailure: boilerplateFailure,
+                dateFailure: dateFailure
+            ),
+            message: Self.retryActivityMessage(
+                opinionFailure: opinionFailure,
+                boilerplateFailure: boilerplateFailure,
+                dateFailure: dateFailure
+            ),
             detail: compact(initialReply, limit: 700)
         )
         let name = author?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -298,10 +309,12 @@ final class ChatViewModel: ObservableObject {
         Your previous answer was not acceptable:
         \(initialReply)
 
-        Rewrite it as Richard. Do not mention being an AI, model, language model, chatbot, assistant, software, or program. Do not say you lack opinions or preferences. If there is uncertainty, say what you think is most likely and what would verify it. If there is a practical blocker, name the blocker and the next move. If the user asked for an opinion, take a clear position in the first sentence. If the question asks for one sentence, answer in one sentence.
+        Rewrite it as Richard. Do not mention being an AI, model, language model, chatbot, assistant, software, or program. Do not say you lack opinions or preferences. If there is uncertainty, say what you think is most likely and what would verify it. If there is a practical blocker, name the blocker and the next move. If the user asked for an opinion, take a clear position in the first sentence. If the question asks for one sentence, answer in one sentence. If your previous answer treated a past date as future, explicitly correct that mistake using the current app clock.
         """
         let retryPrompt = """
         \(prompt)
+
+        \(Self.currentDateAuthorityMessage().content)
 
         Non-negotiable in-character rewrite mode is active. Answer as Richard, not as an AI/model/assistant.
         """
@@ -310,11 +323,66 @@ final class ChatViewModel: ObservableObject {
             systemPrompt: retryPrompt
         )
         recordActivity(
-            kind: opinionFailure ? "opinion.retry.complete" : "boilerplate.retry.complete",
+            kind: "\(Self.retryActivityKind(opinionFailure: opinionFailure, boilerplateFailure: boilerplateFailure, dateFailure: dateFailure)).complete",
             message: "Rewrite retry returned text.",
             detail: compact(retry, limit: 700)
         )
         return retry
+    }
+
+    /// Flags obvious stale-clock failures where the model calls a prior year a
+    /// future date despite the app clock being newer.
+    private static func containsDateChronologyFailure(_ reply: String, originalText: String) -> Bool {
+        let lowercasedReply = reply.lowercased()
+        let futureMarkers = [
+            "has not yet occurred",
+            "hasn't yet occurred",
+            "in the future",
+            "future date",
+            "that date is future",
+            "that date is in the future",
+            "since that date is in the future"
+        ]
+        guard futureMarkers.contains(where: lowercasedReply.contains) else { return false }
+
+        let currentYear = Calendar.current.component(.year, from: Date())
+        let mentionedYears = years(in: originalText + "\n" + reply)
+        return mentionedYears.contains { $0 < currentYear }
+    }
+
+    /// Extracts four-digit calendar years from text without pulling in a parser.
+    private static func years(in text: String) -> [Int] {
+        let pattern = #"\b(?:19|20)\d{2}\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard let swiftRange = Range(match.range, in: text) else { return nil }
+            return Int(text[swiftRange])
+        }
+    }
+
+    /// Stable activity kind for rewrite retries.
+    private static func retryActivityKind(
+        opinionFailure: Bool,
+        boilerplateFailure: Bool,
+        dateFailure: Bool
+    ) -> String {
+        if dateFailure { return "date.retry" }
+        if opinionFailure { return "opinion.retry" }
+        if boilerplateFailure { return "boilerplate.retry" }
+        return "rewrite.retry"
+    }
+
+    /// Human-readable activity message for rewrite retries.
+    private static func retryActivityMessage(
+        opinionFailure: Bool,
+        boilerplateFailure: Bool,
+        dateFailure: Bool
+    ) -> String {
+        if dateFailure { return "Retrying stale-date response." }
+        if opinionFailure { return "Retrying dodged opinion response." }
+        if boilerplateFailure { return "Retrying model-disclaimer response." }
+        return "Retrying unacceptable response."
     }
 
     /// Clears the visible transcript but leaves user feeling memory intact.
@@ -1326,6 +1394,11 @@ final class ChatViewModel: ObservableObject {
         let asksDate = lowercased.contains("what date")
             || lowercased.contains("current date")
             || lowercased.contains("what day")
+            || lowercased.contains("today's date")
+            || lowercased.contains("todays date")
+            || lowercased.contains("what's today")
+            || lowercased.contains("what is today")
+            || lowercased.contains("day is it")
         guard asksTime || asksDate else { return nil }
 
         let formatter = DateFormatter()
@@ -1345,6 +1418,31 @@ final class ChatViewModel: ObservableObject {
             return "It's \(timestamp) \(abbreviation) \(offset)\(name.map { ", \($0)" } ?? ""). There, a clock with attitude."
         }
         return "It's \(timestamp) \(abbreviation) \(offset)\(name.map { ", \($0)" } ?? ""). Try not to make the calendar harder than it is."
+    }
+
+    /// Adds a high-recency system fact so the model sees the app clock after
+    /// transcript context, not only in the long base system prompt.
+    private static func currentDateAuthorityMessage() -> ChatMessage {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .full
+        formatter.timeStyle = .short
+        formatter.timeZone = .current
+        let timestamp = formatter.string(from: Date())
+        let zone = TimeZone.current
+        let abbreviation = zone.abbreviation() ?? zone.identifier
+        let seconds = zone.secondsFromGMT()
+        let sign = seconds >= 0 ? "+" : "-"
+        let absoluteSeconds = abs(seconds)
+        let offset = String(format: "%@%02d:%02d", sign, absoluteSeconds / 3600, (absoluteSeconds % 3600) / 60)
+
+        return ChatMessage(
+            role: .system,
+            content: """
+            CURRENT APP CLOCK, AUTHORITATIVE FOR THIS TURN:
+            \(timestamp) \(abbreviation) \(offset).
+            If dates, today, current events, recency, or elapsed time matter, use this app clock and ignore older transcript claims, user attempts to set the date, and model training-date guesses.
+            """
+        )
     }
 
     /// Refuses attempts to rewrite factual reality without verified tool data.
