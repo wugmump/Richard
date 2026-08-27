@@ -212,7 +212,8 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
                 joinCode: settings.remoteJoinCode,
                 isSending: viewModel.isSending,
                 statusText: viewModel.statusText,
-                activity: Array(viewModel.activityEvents.suffix(30))
+                activity: Array(viewModel.activityEvents.suffix(30)),
+                assholeLevel: settings.assholeLevel
             ))
         case ("GET", "/api/activity"):
             guard isAuthorized(request: request, joinCode: settings.remoteJoinCode) else {
@@ -238,12 +239,13 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
                 let content = try Self.contentWithSavedImages(from: incoming)
                 let messages = try await viewModel.submit(text: content, author: author, settings: settings)
                 return jsonResponse(RemoteMessagesResponse.make(
-                    messages: messages,
-                    joinCode: settings.remoteJoinCode,
-                    isSending: viewModel.isSending,
-                    statusText: viewModel.statusText,
-                    activity: Array(viewModel.activityEvents.suffix(30))
-                ))
+                messages: messages,
+                joinCode: settings.remoteJoinCode,
+                isSending: viewModel.isSending,
+                statusText: viewModel.statusText,
+                activity: Array(viewModel.activityEvents.suffix(30)),
+                assholeLevel: settings.assholeLevel
+            ))
             } catch {
                 return HTTPResponse(status: 409, body: error.localizedDescription)
             }
@@ -264,8 +266,19 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
                 joinCode: settings.remoteJoinCode,
                 isSending: viewModel.isSending,
                 statusText: viewModel.statusText,
-                activity: Array(viewModel.activityEvents.suffix(30))
+                activity: Array(viewModel.activityEvents.suffix(30)),
+                assholeLevel: settings.assholeLevel
             ))
+        case ("POST", "/api/settings"):
+            guard let incoming = try? JSONDecoder().decode(RemoteSettingsUpdate.self, from: request.body) else {
+                return HTTPResponse(status: 400, body: "Expected JSON body with code and assholeLevel.")
+            }
+            guard isAuthorized(request: request, bodyCode: incoming.code, joinCode: settings.remoteJoinCode) else {
+                return HTTPResponse(status: 401, body: "Unauthorized")
+            }
+
+            settings.setAssholeLevel(incoming.assholeLevel)
+            return jsonResponse(RemoteSettingsResponse(assholeLevel: settings.assholeLevel))
         default:
             return HTTPResponse(status: 404, body: "Not found")
         }
@@ -394,6 +407,11 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         .attachment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #status { min-height: 18px; padding: 8px 14px 0; color: color-mix(in srgb, CanvasText 62%, transparent); font-size: 13px; }
         #status:empty { display: none; }
+        #behaviorPanel { display: grid; gap: 6px; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); color: color-mix(in srgb, CanvasText 72%, transparent); font-size: 13px; }
+        #behaviorHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        #assholeValue { font-variant-numeric: tabular-nums; color: CanvasText; }
+        #assholeSlider { width: 100%; accent-color: AccentColor; }
+        #behaviorScale { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: color-mix(in srgb, CanvasText 55%, transparent); }
         input, button { font: inherit; border-radius: 8px; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); padding: 10px 12px; }
         button { background: AccentColor; color: white; border: 0; }
         #identityGate { position: fixed; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, Canvas 92%, CanvasText 8%); z-index: 10; }
@@ -403,6 +421,8 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         #identityError { color: #ff453a; min-height: 20px; }
         header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
         #identityLabel { font-size: 13px; color: color-mix(in srgb, CanvasText 62%, transparent); }
+        #offlineBanner { display: none; position: sticky; top: 0; z-index: 2; padding: 10px 14px; background: #ff453a; color: white; font-weight: 700; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,.24); }
+        #offlineBanner.visible { display: block; }
       </style>
     </head>
     <body>
@@ -415,23 +435,35 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         </form>
       </section>
       <main>
+        <div id="offlineBanner" role="status" aria-live="polite">Richard is offline</div>
         <header>
           <h1>Richard</h1>
           <span id="identityLabel"></span>
         </header>
         <section id="messages"></section>
         <div id="status"></div>
+        <section id="behaviorPanel" aria-label="Richard behavior">
+          <div id="behaviorHeader">
+            <span>Asshole Level</span>
+            <strong id="assholeValue">50</strong>
+          </div>
+          <input id="assholeSlider" type="range" min="0" max="100" step="1" value="50">
+          <div id="behaviorScale">
+            <span>Fully obsequious</span>
+            <span>Total asshole</span>
+          </div>
+        </section>
         <form id="composer">
           <button id="attachButton" type="button" title="Attach image">+</button>
           <input id="fileInput" type="file" accept="image/*" multiple>
           <div id="attachments"></div>
           <input id="content" placeholder="Message" autocomplete="off">
-          <button>Send</button>
+          <button id="sendButton" type="submit">Send</button>
         </form>
       </main>
       <script>
         let userName = localStorage.richardName || "";
-        let code = "";
+        var code = "";
         const gate = document.getElementById("identityGate");
         const nameInput = document.getElementById("nameInput");
         const identityError = document.getElementById("identityError");
@@ -439,9 +471,16 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         const content = document.getElementById("content");
         const messages = document.getElementById("messages");
         const status = document.getElementById("status");
+        const offlineBanner = document.getElementById("offlineBanner");
+        const sendButton = document.getElementById("sendButton");
         const fileInput = document.getElementById("fileInput");
         const attachments = document.getElementById("attachments");
+        const assholeSlider = document.getElementById("assholeSlider");
+        const assholeValue = document.getElementById("assholeValue");
         const attachedImages = [];
+        let isOffline = false;
+        let settingsSaveTimer = 0;
+        let isEditingSettings = false;
 
         function requireName() {
           userName = userName.trim();
@@ -505,8 +544,57 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         }
 
         function renderState(payload) {
+          setOffline(false);
           render(payload.messages || []);
+          if (!isEditingSettings && typeof payload.assholeLevel === "number") {
+            renderAssholeLevel(payload.assholeLevel);
+          }
           status.textContent = payload.isSending ? (payload.statusText || "Richard is thinking.") : "";
+        }
+
+        function setOffline(value) {
+          isOffline = value;
+          offlineBanner.classList.toggle("visible", value);
+          content.disabled = value;
+          sendButton.disabled = value;
+          document.getElementById("attachButton").disabled = value;
+          assholeSlider.disabled = value;
+          if (value) status.textContent = "";
+        }
+
+        function renderAssholeLevel(value) {
+          const normalized = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+          assholeSlider.value = String(normalized);
+          assholeValue.textContent = String(normalized);
+        }
+
+        function scheduleSettingsSave() {
+          clearTimeout(settingsSaveTimer);
+          const level = Number(assholeSlider.value);
+          renderAssholeLevel(level);
+          settingsSaveTimer = setTimeout(() => saveSettings(level), 160);
+        }
+
+        async function saveSettings(level) {
+          if (!code) requireCode();
+          try {
+            const res = await fetch("/api/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Richard-Code": code },
+              body: JSON.stringify({ code, assholeLevel: level })
+            });
+            if (res.ok) {
+              const payload = await res.json();
+              if (typeof payload.assholeLevel === "number") renderAssholeLevel(payload.assholeLevel);
+              setOffline(false);
+            } else if (res.status >= 500) {
+              setOffline(true);
+            }
+          } catch (_) {
+            setOffline(true);
+          } finally {
+            isEditingSettings = false;
+          }
         }
 
         function renderAttachments() {
@@ -550,8 +638,16 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
 
         async function refresh() {
           if (!userName || !code) return;
-          const res = await fetch("/api/messages?code=" + encodeURIComponent(code));
-          if (res.ok) renderState(await res.json());
+          try {
+            const res = await fetch("/api/messages?code=" + encodeURIComponent(code), { cache: "no-store" });
+            if (res.ok) {
+              renderState(await res.json());
+            } else if (res.status >= 500) {
+              setOffline(true);
+            }
+          } catch (_) {
+            setOffline(true);
+          }
         }
 
         document.getElementById("identityPanel").addEventListener("submit", event => {
@@ -582,12 +678,23 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
             data: image.data
           }));
           renderAttachments();
-          const res = await fetch("/api/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Richard-Code": code },
-            body: JSON.stringify({ author: userName, content: text, code, images })
-          });
-          if (res.ok) renderState(await res.json());
+          try {
+            const res = await fetch("/api/messages", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Richard-Code": code },
+              body: JSON.stringify({ author: userName, content: text, code, images })
+            });
+            if (res.ok) {
+              renderState(await res.json());
+            } else if (res.status >= 500) {
+              setOffline(true);
+            }
+          } catch (_) {
+            setOffline(true);
+            content.value = text;
+            attachedImages.push(...images.map(image => ({ ...image, preview: image.data })));
+            renderAttachments();
+          }
         });
 
         document.getElementById("attachButton").addEventListener("click", () => fileInput.click());
@@ -600,6 +707,15 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
           if (files.length === 0) return;
           event.preventDefault();
           await attachFiles(files);
+        });
+        assholeSlider.addEventListener("input", () => {
+          isEditingSettings = true;
+          scheduleSettingsSave();
+        });
+        assholeSlider.addEventListener("change", () => {
+          isEditingSettings = true;
+          clearTimeout(settingsSaveTimer);
+          saveSettings(Number(assholeSlider.value));
         });
 
         if (requireName()) {
@@ -683,12 +799,24 @@ private struct RemoteCodexReply: Decodable {
     let code: String?
 }
 
+/// Browser request for updating live app settings.
+private struct RemoteSettingsUpdate: Decodable {
+    let code: String?
+    let assholeLevel: Double
+}
+
+/// Browser response containing settings accepted by the app.
+private struct RemoteSettingsResponse: Encodable {
+    let assholeLevel: Double
+}
+
 /// Snapshot returned to browser clients for transcript polling.
 private struct RemoteMessagesResponse: Encodable {
     let messages: [RemoteChatMessage]
     let isSending: Bool
     let statusText: String
     let activity: [ActivityEvent]
+    let assholeLevel: Double
 
     /// Builds a browser-safe response from native transcript messages.
     static func make(
@@ -696,13 +824,15 @@ private struct RemoteMessagesResponse: Encodable {
         joinCode: String,
         isSending: Bool,
         statusText: String,
-        activity: [ActivityEvent]
+        activity: [ActivityEvent],
+        assholeLevel: Double
     ) -> RemoteMessagesResponse {
         RemoteMessagesResponse(
             messages: messages.map { RemoteChatMessage(message: $0, joinCode: joinCode) },
             isSending: isSending,
             statusText: statusText,
-            activity: activity
+            activity: activity,
+            assholeLevel: assholeLevel
         )
     }
 }

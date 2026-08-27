@@ -86,6 +86,7 @@ Open Richard settings and check:
 - Backend URL: usually `http://localhost:11434`.
 - Model name: the Ollama model tag to use.
 - Vision model: optional, used only for image parsing.
+- Behavior: set the Asshole Level slider from `0` for fully obsequious to `100` for total asshole.
 - Remote access: enable only when you want browser clients on the network.
 - Join code: required by browser users and JSON API clients.
 
@@ -103,6 +104,8 @@ http://127.0.0.1:9443
 
 Office users should use the LAN URL shown in the app's settings or copied from the app menu. They must enter the join code. Their first unskippable prompt asks for a name, and that name is used for message attribution and per-user memory.
 
+Already-open browser clients poll the app every two seconds. If Richard quits, crashes, or stops answering, those clients show a red `Richard is offline` banner and disable sending until the app comes back. Browser users can also adjust the shared Asshole Level slider; it writes to the same persisted setting as the Mac Preferences control.
+
 Useful endpoints:
 
 ```txt
@@ -110,6 +113,7 @@ GET  /api/messages?code=JOIN_CODE
 GET  /api/activity?code=JOIN_CODE
 POST /api/messages
 POST /api/codex-reply
+POST /api/settings
 ```
 
 Post a chat message:
@@ -195,7 +199,7 @@ Richard supports three Pi tool patterns through the model prompt:
 
 - `PI_COMMAND:` runs a shell command on the Pi over SSH.
 - `PI_SCREENSHOT` captures the Pi HDMI screen for verification.
-- `PI_WALLPAPER_SPEC:` lets Richard describe visual content as JSON, then the app renders and sets a wallpaper on the Pi.
+- `PI_WALLPAPER_SPEC:` lets Richard describe visual content as JSON, then the app renders and sets a wallpaper on the Pi. The spec supports repeated visual items plus optional `asciiArt` lines for mazes, diagrams, tables, and other layout-sensitive text.
 
 Pi visual requests are deliberately routed through a generic wallpaper spec. The app should not grow request-specific drawing catches for individual prompts.
 

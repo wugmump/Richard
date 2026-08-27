@@ -25,6 +25,7 @@ private struct PiWallpaperSpec: Codable {
     var headline: String?
     var labels: Bool?
     var background: String?
+    var asciiArt: [String]?
     var items: [PiWallpaperItem]
 }
 
@@ -188,7 +189,12 @@ final class ChatViewModel: ObservableObject {
         } else if directPiCommand == nil && !directPiScreenshot && directImageAnalyses.isEmpty {
             let userURLs = Self.urls(in: trimmed)
             if Self.isPiVisualRequest(trimmed) {
-                history = Self.piVisualFocusedHistory(for: userMessage, originalText: trimmed, author: author)
+                history = Self.piVisualFocusedHistory(
+                    for: userMessage,
+                    originalText: trimmed,
+                    author: author,
+                    recentMessages: Array(messages.dropLast().suffix(6))
+                )
                 recordActivity(
                     kind: "context.pi_visual",
                     message: "Prepared focused Pi visual context.",
@@ -472,16 +478,34 @@ final class ChatViewModel: ObservableObject {
 
     /// Creates a narrow planning context for Pi visual work so the model emits
     /// the structured display tool instead of imitating old shell output.
-    private static func piVisualFocusedHistory(for userMessage: ChatMessage, originalText: String, author: String?) -> [ChatMessage] {
-        [
+    private static func piVisualFocusedHistory(
+        for userMessage: ChatMessage,
+        originalText: String,
+        author: String?,
+        recentMessages: [ChatMessage]
+    ) -> [ChatMessage] {
+        let recentContext = recentMessages
+            .filter { !isToolResultTranscript($0.content) && !isPromptPoison($0.content) }
+            .map { message -> ChatMessage in
+                var trimmed = message
+                trimmed.content = String(trimmed.content.prefix(1_400))
+                return trimmed
+            }
+
+        return [
             ChatMessage(
                 role: .system,
                 content: """
                 Focused Raspberry Pi visual turn. Ignore earlier transcript examples and prior command output.
                 Convert the user's visual request into exactly one PI_WALLPAPER_SPEC line with compact JSON.
                 Do not answer in prose before the tool runs. Do not use PI_COMMAND for screen drawing.
+                Use recent chat context when the request refers to prior content, such as an already described maze, solution, diagram, or text.
+                Include asciiArt when exact letters, line layout, maze paths, or diagram structure matter.
                 """
-            ),
+            )
+        ]
+            + recentContext
+            + [
             ChatMessage(role: .user, author: author, content: originalText)
         ]
     }
@@ -877,10 +901,30 @@ final class ChatViewModel: ObservableObject {
                     headline: object["headline"] as? String,
                     labels: object["labels"] as? Bool,
                     background: object["background"] as? String,
+                    asciiArt: Self.stringLines(from: object["asciiArt"]),
                     items: items
                 )
             }
-            .filter { !$0.items.isEmpty || ($0.headline?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false) }
+            .filter {
+                !$0.items.isEmpty
+                    || ($0.asciiArt?.isEmpty == false)
+                    || ($0.headline?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            }
+    }
+
+    /// Normalizes a model-provided string or string array into drawable lines.
+    private static func stringLines(from value: Any?) -> [String]? {
+        if let lines = value as? [String] {
+            let cleaned = lines.map { String($0.prefix(160)) }
+            return cleaned.isEmpty ? nil : cleaned
+        }
+        if let text = value as? String {
+            let cleaned = text
+                .components(separatedBy: .newlines)
+                .map { String($0.prefix(160)) }
+            return cleaned.isEmpty ? nil : cleaned
+        }
+        return nil
     }
 
     /// Extracts the first balanced JSON object from a model line, ignoring
@@ -1712,6 +1756,7 @@ final class ChatViewModel: ObservableObject {
             headline: spec.headline?.trimmingCharacters(in: .whitespacesAndNewlines),
             labels: spec.labels ?? false,
             background: spec.background?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            asciiArt: spec.asciiArt.map { Array($0.map { String($0.prefix(160)) }.prefix(80)) },
             items: Array(normalizedItems.prefix(24))
         )
         let data = (try? JSONEncoder().encode(normalized)) ?? Data()
@@ -1744,6 +1789,18 @@ final class ChatViewModel: ObservableObject {
             for path in [
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                 "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"
+            ]:
+                try:
+                    return ImageFont.truetype(path, size)
+                except Exception:
+                    pass
+            return ImageFont.load_default()
+
+        def mono_font(size):
+            for path in [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation2/LiberationMono-Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
             ]:
                 try:
                     return ImageFont.truetype(path, size)
@@ -1820,26 +1877,28 @@ final class ChatViewModel: ObservableObject {
             kind = str(item.get("kind", "shape"))
             count = max(1, min(int(item.get("count", 1)), 120))
             requested.extend([kind] * count)
-        if not requested:
+        ascii_lines = [str(line)[:160] for line in spec.get("asciiArt", []) if str(line).strip()]
+        if not requested and not ascii_lines:
             requested = ["shape"] * 12
         random.shuffle(requested)
 
         title_reserved = 430 if spec.get("headline") else 120
-        cols = max(8, min(18, int(math.sqrt(len(requested) * W / H)) + 3))
-        rows = max(4, math.ceil(len(requested) / cols))
-        cell_w = W / cols
-        cell_h = (H - title_reserved - 90) / rows
-        for index, kind in enumerate(requested):
-            row, col = divmod(index, cols)
-            cx = int((col + .5) * cell_w + random.randint(-int(cell_w*.22), int(cell_w*.22)))
-            cy = int(title_reserved + (row + .5) * cell_h + random.randint(-int(cell_h*.2), int(cell_h*.2)))
-            size = int(max(28, min(cell_w, cell_h) * random.uniform(.28, .46)))
-            draw_creature(kind, cx, cy, size)
-            if spec.get("labels", False):
-                label = kind[:24].upper()
-                lf = font(max(22, size // 4))
-                box = d.textbbox((0, 0), label, font=lf)
-                d.text((cx - (box[2]-box[0])//2, cy + size + 8), label, fill=(255,255,255), font=lf)
+        if requested:
+            cols = max(8, min(18, int(math.sqrt(len(requested) * W / H)) + 3))
+            rows = max(4, math.ceil(len(requested) / cols))
+            cell_w = W / cols
+            cell_h = (H - title_reserved - 90) / rows
+            for index, kind in enumerate(requested):
+                row, col = divmod(index, cols)
+                cx = int((col + .5) * cell_w + random.randint(-int(cell_w*.22), int(cell_w*.22)))
+                cy = int(title_reserved + (row + .5) * cell_h + random.randint(-int(cell_h*.2), int(cell_h*.2)))
+                size = int(max(28, min(cell_w, cell_h) * random.uniform(.28, .46)))
+                draw_creature(kind, cx, cy, size)
+                if spec.get("labels", False):
+                    label = kind[:24].upper()
+                    lf = font(max(22, size // 4))
+                    box = d.textbbox((0, 0), label, font=lf)
+                    d.text((cx - (box[2]-box[0])//2, cy + size + 8), label, fill=(255,255,255), font=lf)
 
         headline = (spec.get("headline") or "").strip()
         if headline:
@@ -1859,8 +1918,35 @@ final class ChatViewModel: ObservableObject {
                 d.text((x+dx, y+dy), headline, fill=(0,0,0), font=tf)
             d.text((x, y), headline, fill=(255,231,76), font=tf)
 
+        if ascii_lines:
+            max_width = W - 360
+            max_height = H - title_reserved - 180
+            size = 132
+            while size > 28:
+                mf = mono_font(size)
+                boxes = [d.textbbox((0, 0), line or " ", font=mf) for line in ascii_lines]
+                widest = max((box[2] - box[0] for box in boxes), default=0)
+                line_height = max((box[3] - box[1] for box in boxes), default=size) + max(8, size // 5)
+                if widest <= max_width and line_height * len(ascii_lines) <= max_height:
+                    break
+                size -= 4
+            mf = mono_font(size)
+            boxes = [d.textbbox((0, 0), line or " ", font=mf) for line in ascii_lines]
+            widest = max((box[2] - box[0] for box in boxes), default=0)
+            line_height = max((box[3] - box[1] for box in boxes), default=size) + max(8, size // 5)
+            block_height = line_height * len(ascii_lines)
+            x0 = (W - widest) // 2 - 80
+            y0 = title_reserved + max(20, (H - title_reserved - block_height) // 2) - 60
+            x1 = x0 + widest + 160
+            y1 = y0 + block_height + 120
+            d.rounded_rectangle([x0, y0, x1, y1], radius=28, fill=(0,0,0), outline=(255,231,76), width=10)
+            y = y0 + 60
+            for line in ascii_lines:
+                d.text((x0 + 80, y), line, fill=(255,255,255), font=mf)
+                y += line_height
+
         img.save("/tmp/richard_wallpaper_spec.png")
-        print("RICHARD_WALLPAPER_SPEC_RENDERED items=%d headline=%s" % (len(requested), bool(headline)))
+        print("RICHARD_WALLPAPER_SPEC_RENDERED items=%d ascii_lines=%d headline=%s" % (len(requested), len(ascii_lines), bool(headline)))
         """
         let encodedScript = Data(script.utf8).base64EncodedString()
         return """

@@ -152,6 +152,30 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Behavior") {
+                // The prompt reads this value on every send, so changes take
+                // effect immediately for the next model request.
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Asshole Level")
+                        Spacer()
+                        Text("\(Int(settings.assholeLevel.rounded()))")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Slider(value: $settings.assholeLevel, in: 0...100, step: 1)
+
+                    HStack {
+                        Text("Fully obsequious")
+                        Spacer()
+                        Text("Total asshole")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Remote Access") {
                 // These values drive `RemoteChatServer`, which watches settings
                 // changes and restarts itself when needed.
