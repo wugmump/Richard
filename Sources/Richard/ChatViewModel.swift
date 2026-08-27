@@ -305,7 +305,8 @@ final class ChatViewModel: ObservableObject {
         let opinionFailure = Self.isOpinionRequest(originalText) && Self.isOpinionDodge(initialReply)
         let boilerplateFailure = Self.containsModelBoilerplate(initialReply)
         let dateFailure = Self.containsDateChronologyFailure(initialReply, originalText: originalText)
-        guard opinionFailure || boilerplateFailure || dateFailure else {
+        let codexHandoffFailure = Self.containsHallucinatedCodexHandoff(initialReply)
+        guard opinionFailure || boilerplateFailure || dateFailure || codexHandoffFailure else {
             return initialReply
         }
 
@@ -314,12 +315,14 @@ final class ChatViewModel: ObservableObject {
             kind: Self.retryActivityKind(
                 opinionFailure: opinionFailure,
                 boilerplateFailure: boilerplateFailure,
-                dateFailure: dateFailure
+                dateFailure: dateFailure,
+                codexHandoffFailure: codexHandoffFailure
             ),
             message: Self.retryActivityMessage(
                 opinionFailure: opinionFailure,
                 boilerplateFailure: boilerplateFailure,
-                dateFailure: dateFailure
+                dateFailure: dateFailure,
+                codexHandoffFailure: codexHandoffFailure
             ),
             detail: compact(initialReply, limit: 700)
         )
@@ -330,7 +333,7 @@ final class ChatViewModel: ObservableObject {
         Your previous answer was not acceptable:
         \(initialReply)
 
-        Rewrite it as Richard. Do not mention being an AI, model, language model, chatbot, assistant, software, or program. Do not say you lack opinions or preferences. If there is uncertainty, say what you think is most likely and what would verify it. If there is a practical blocker, name the blocker and the next move. If the user asked for an opinion, take a clear position in the first sentence. If the question asks for one sentence, answer in one sentence. If your previous answer treated a past date as future, explicitly correct that mistake using the current app clock.
+        Rewrite it as Richard. Do not mention being an AI, model, language model, chatbot, assistant, software, or program. Do not say you lack opinions or preferences. Do not claim Codex was queued, do not say "Codex said", and do not pretend Codex answered unless the current user message begins exactly with "Codex:". If there is uncertainty, say what you think is most likely and what would verify it. If there is a practical blocker, name the blocker and the next move. If the user asked for an opinion, take a clear position in the first sentence. If the question asks for one sentence, answer in one sentence. If your previous answer treated a past date as future, explicitly correct that mistake using the current app clock.
         """
         let retryPrompt = """
         \(prompt)
@@ -344,7 +347,7 @@ final class ChatViewModel: ObservableObject {
             systemPrompt: retryPrompt
         )
         recordActivity(
-            kind: "\(Self.retryActivityKind(opinionFailure: opinionFailure, boilerplateFailure: boilerplateFailure, dateFailure: dateFailure)).complete",
+            kind: "\(Self.retryActivityKind(opinionFailure: opinionFailure, boilerplateFailure: boilerplateFailure, dateFailure: dateFailure, codexHandoffFailure: codexHandoffFailure)).complete",
             message: "Rewrite retry returned text.",
             detail: compact(retry, limit: 700)
         )
@@ -371,6 +374,23 @@ final class ChatViewModel: ObservableObject {
         return mentionedYears.contains { $0 < currentYear }
     }
 
+    /// Flags model-written Codex bridge status text in ordinary Richard replies.
+    ///
+    /// Real Codex updates are appended by `appendCodexReply`; if the model emits
+    /// these phrases during a normal response, it is imitating transcript noise.
+    private static func containsHallucinatedCodexHandoff(_ reply: String) -> Bool {
+        let lowercased = reply.lowercased()
+        let markers = [
+            "queued for codex",
+            "queued into codex",
+            "codex said:",
+            "codex replied:",
+            "codex completed",
+            "codex bridge"
+        ]
+        return markers.contains { lowercased.contains($0) }
+    }
+
     /// Extracts four-digit calendar years from text without pulling in a parser.
     private static func years(in text: String) -> [Int] {
         let pattern = #"\b(?:19|20)\d{2}\b"#
@@ -386,8 +406,10 @@ final class ChatViewModel: ObservableObject {
     private static func retryActivityKind(
         opinionFailure: Bool,
         boilerplateFailure: Bool,
-        dateFailure: Bool
+        dateFailure: Bool,
+        codexHandoffFailure: Bool
     ) -> String {
+        if codexHandoffFailure { return "codex.handoff.retry" }
         if dateFailure { return "date.retry" }
         if opinionFailure { return "opinion.retry" }
         if boilerplateFailure { return "boilerplate.retry" }
@@ -398,8 +420,10 @@ final class ChatViewModel: ObservableObject {
     private static func retryActivityMessage(
         opinionFailure: Bool,
         boilerplateFailure: Bool,
-        dateFailure: Bool
+        dateFailure: Bool,
+        codexHandoffFailure: Bool
     ) -> String {
+        if codexHandoffFailure { return "Retrying hallucinated Codex handoff response." }
         if dateFailure { return "Retrying stale-date response." }
         if opinionFailure { return "Retrying dodged opinion response." }
         if boilerplateFailure { return "Retrying model-disclaimer response." }
@@ -737,6 +761,7 @@ final class ChatViewModel: ObservableObject {
     private func promptSourceMessages(from messages: [ChatMessage]) -> [ChatMessage] {
         messages.filter { message in
             guard message.role != .system else { return false }
+            guard normalizedName(message.author) != "codex" else { return false }
             guard !Self.isToolResultTranscript(message.content) else { return false }
             return !Self.isPromptPoison(message.content)
         }
@@ -1755,6 +1780,9 @@ final class ChatViewModel: ObservableObject {
             "i will update my internal database",
             "i'll make sure to keep this updated knowledge",
             "richard said:",
+            "codex said:",
+            "queued for codex",
+            "queued into codex",
             "as an ai",
             "as a language model",
             "as a large language model",
@@ -1948,9 +1976,38 @@ final class ChatViewModel: ObservableObject {
     /// Applies local cleanup rules that are easier and more reliable than
     /// asking a small local model to obey them perfectly.
     private static func finalVisibleReply(_ reply: String, originalText: String) -> String {
-        let cleaned = stripModelBoilerplate(from: stripInstructionMetaNotes(from: cleanedAssistantReply(reply)))
+        let cleaned = stripHallucinatedCodexHandoff(
+            from: stripModelBoilerplate(from: stripInstructionMetaNotes(from: cleanedAssistantReply(reply))),
+            originalText: originalText
+        )
         guard asksForOneSentence(originalText) else { return cleaned }
         return firstSentence(from: cleaned)
+    }
+
+    /// Prevents fake Codex status text from becoming visible Richard speech.
+    ///
+    /// Actual Codex messages enter the transcript through `appendCodexReply`
+    /// with author metadata, so stripping these phrases here only affects
+    /// model-generated imitation inside an ordinary assistant reply.
+    private static func stripHallucinatedCodexHandoff(from reply: String, originalText: String) -> String {
+        guard containsHallucinatedCodexHandoff(reply) else { return reply }
+        let lowercasedOriginal = originalText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !lowercasedOriginal.hasPrefix("codex:") else { return reply }
+
+        let lines = reply
+            .components(separatedBy: .newlines)
+            .filter { line in
+                let lowercased = line.lowercased()
+                return !containsHallucinatedCodexHandoff(lowercased)
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !lines.isEmpty {
+            return lines
+        }
+
+        return "I tried to pawn that off on Codex when it was clearly for me. Ask it again and I will answer it myself."
     }
 
     /// Keeps a one-sentence request from ballooning into a paragraph.

@@ -413,6 +413,10 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         #settingsHeader h2 { margin: 0; font-size: 18px; }
         #closeSettingsButton { width: 34px; height: 34px; padding: 0; background: color-mix(in srgb, CanvasText 10%, transparent); color: CanvasText; }
         #settingsBody { display: grid; gap: 16px; padding: 16px; }
+        #identitySettings { display: grid; gap: 8px; color: color-mix(in srgb, CanvasText 72%, transparent); font-size: 13px; }
+        #settingsNameRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        #settingsNameValue { color: CanvasText; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #changeNameButton { justify-self: start; background: color-mix(in srgb, CanvasText 12%, transparent); color: CanvasText; }
         #behaviorPanel { display: grid; gap: 6px; color: color-mix(in srgb, CanvasText 72%, transparent); font-size: 13px; }
         #behaviorHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         #assholeValue { font-variant-numeric: tabular-nums; color: CanvasText; }
@@ -463,6 +467,13 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
           <button id="closeSettingsButton" type="button" title="Close" aria-label="Close">×</button>
         </div>
         <div id="settingsBody">
+          <section id="identitySettings" aria-label="Identity">
+            <div id="settingsNameRow">
+              <span>Name</span>
+              <strong id="settingsNameValue"></strong>
+            </div>
+            <button id="changeNameButton" type="button">Change Name</button>
+          </section>
           <section id="behaviorPanel" aria-label="Richard behavior">
             <div id="behaviorHeader">
               <span>Asshole Level</span>
@@ -491,10 +502,12 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         const settingsButton = document.getElementById("settingsButton");
         const settingsDialog = document.getElementById("settingsDialog");
         const closeSettingsButton = document.getElementById("closeSettingsButton");
+        const changeNameButton = document.getElementById("changeNameButton");
         const fileInput = document.getElementById("fileInput");
         const attachments = document.getElementById("attachments");
         const assholeSlider = document.getElementById("assholeSlider");
         const assholeValue = document.getElementById("assholeValue");
+        const settingsNameValue = document.getElementById("settingsNameValue");
         const attachedImages = [];
         let isOffline = false;
         let isSubmitting = false;
@@ -511,6 +524,7 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
 
           localStorage.richardName = userName;
           identityLabel.textContent = userName;
+          settingsNameValue.textContent = userName;
           gate.classList.add("hidden");
           return true;
         }
@@ -748,6 +762,13 @@ final class RemoteChatServer: ObservableObject, @unchecked Sendable {
         closeSettingsButton.addEventListener("click", () => settingsDialog.close());
         settingsDialog.addEventListener("click", event => {
           if (event.target === settingsDialog) settingsDialog.close();
+        });
+        changeNameButton.addEventListener("click", () => {
+          settingsDialog.close();
+          nameInput.value = userName;
+          gate.classList.remove("hidden");
+          nameInput.focus();
+          nameInput.select();
         });
         fileInput.addEventListener("change", async () => {
           await attachFiles(fileInput.files || []);

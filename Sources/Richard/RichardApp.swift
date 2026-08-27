@@ -7,12 +7,12 @@ struct RichardApp: App {
     /// Shared app settings object injected into the window and settings scene.
     @StateObject private var settings = AppSettings()
 
-    /// Declares the main chat window, settings window, and custom commands.
+    /// Declares the headless host window, settings window, and custom commands.
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(settings)
-                .frame(minWidth: 860, minHeight: 620)
+                .frame(minWidth: 560, minHeight: 430)
         }
         .windowStyle(.titleBar)
 
